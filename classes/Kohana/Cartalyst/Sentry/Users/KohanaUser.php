@@ -18,9 +18,10 @@
  * @link       http://cartalyst.com
  */
 
+use Cartalyst\Sentry\Users\UserInterface;
 use ORM;
 
-class KohanaUser extends ORM {
+class KohanaUser extends ORM implements UserInterface {
 
 	/**
 	 * {@inheritDoc}
@@ -46,11 +47,75 @@ class KohanaUser extends ORM {
 	/**
 	 * {@inheritDoc}
 	 */
-	protected $_updated_column = 'created_at';
+	protected $_updated_column = array(
+		'column' => 'updated_at',
+		'format' => 'Y-m-d H:i:s');
 
 	/**
 	 * {@inheritDoc}
 	 */
-	protected $_created_column = 'updated_at';
+	protected $_created_column = array(
+		'column' => 'created_at',
+		'format' => 'Y-m-d H:i:s',
+	);
+
+	/**
+	 * {@inheritDoc}
+	 */
+	protected $_serialize_columns = array(
+		'persistence_codes',
+		'permissions',
+	);
+
+	/**
+	 * Array of login column names.
+	 *
+	 * @var array
+	 */
+	protected $_loginNames = array('email');
+
+	/**
+	 * Returns an array of login column names.
+	 *
+	 * @return array
+	 */
+	public function getLoginNames()
+	{
+		return $this->_loginNames;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public function getUserId()
+	{
+		return $this->id;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public function getUserLogin()
+	{
+		$attribute = $this->getUserLoginName();
+
+		return $this->$attribute;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public function getUserLoginName()
+	{
+		return reset($this->loginNames);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 */
+	public function getUserPassword()
+	{
+		return $this->password;
+	}
 
 }

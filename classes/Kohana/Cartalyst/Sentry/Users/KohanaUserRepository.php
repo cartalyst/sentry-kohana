@@ -18,42 +18,18 @@
  * @link       http://cartalyst.com
  */
 
+use Carbon\Carbon;
 use Cartalyst\Sentry\Hashing\HasherInterface;
+use Cartalyst\Sentry\Users\BaseUserRepository;
 use Cartalyst\Sentry\Users\UserRepositoryInterface;
 use Cartalyst\Sentry\Users\UserInterface;
 
-class KohanaUserRepository implements UserRepositoryInterface {
+class KohanaUserRepository extends BaseUserRepository implements UserRepositoryInterface {
 
 	/**
-	 * Hasher.
-	 *
-	 * @var \Cartalyst\Sentry\Hashing\HasherInterface
-	 */
-	protected $hasher;
-
-	/**
-	 * Model name.
-	 *
-	 * @var string
+	 * {@inheritDoc}
 	 */
 	protected $model = 'Cartalyst\Sentry\Users\KohanaUser';
-
-	/**
-	 * Create a new Illuminate user repository.
-	 *
-	 * @param  \Cartalyst\Sentry\Hashing\HasherInterface  $hasher
-	 * @param  string  $model
-	 * @return void
-	 */
-	public function __construct(HasherInterface $hasher, $model = null)
-	{
-		$this->hasher = $hasher;
-
-		if (isset($model))
-		{
-			$this->model = $model;
-		}
-	}
 
 	/**
 	 * {@inheritDoc}
@@ -73,15 +49,33 @@ class KohanaUserRepository implements UserRepositoryInterface {
 	 */
 	public function findByCredentials(array $credentials)
 	{
-		throw new \BadMethodCallException('Method not implemented yet.');
-	}
+		$instance = $this->createModel();
+		$loginNames = $instance->getLoginNames();
 
-	/**
-	 * {@inheritDoc}
-	 */
-	public function validateCredentials(UserInterface $user, array $credentials)
-	{
-		return $this->hasher->check($credentials['password'], $user->password);
+		list($logins, $password, $credentials) = $this->parseCredentials($credentials, $loginNames);
+
+		if (is_array($logins))
+		{
+			foreach ($logins as $key => $value)
+			{
+				$instance->where($key, '=', $value);
+			}
+		}
+		else
+		{
+			$instance->and_where_open();
+
+			foreach ($loginNames as $name)
+			{
+				$instance->or_where($name, '=', $logins);
+			}
+
+			$instance->and_where_close();
+		}
+
+		$user = $instance->find();
+
+		return $user->loaded() ? $user : null;
 	}
 
 	/**
@@ -89,7 +83,26 @@ class KohanaUserRepository implements UserRepositoryInterface {
 	 */
 	public function findByPersistenceCode($code)
 	{
-		throw new \BadMethodCallException('Method not implemented yet.');
+		// Narrow down our query to those who's persistence codes array
+		// contains ours. We'll filter the right user out.
+		$users = $this->createModel()
+			->where('persistence_codes', 'like', "%{$code}%")
+			->find_all()
+			->as_array();
+
+		$users = array_filter($users, function($user) use ($code)
+		{
+			$persistenceCodes = $user->persistence_codes;
+
+			return is_array($persistenceCodes) and in_array($code, $persistenceCodes);
+		});
+
+		if (count($users) > 1)
+		{
+			throw new \RuntimeException('Multiple users were found with the same persistence code. This should not happen.');
+		}
+
+		return reset($users);
 	}
 
 	/**
@@ -97,92 +110,8 @@ class KohanaUserRepository implements UserRepositoryInterface {
 	 */
 	public function recordLogin(UserInterface $user)
 	{
-		throw new \BadMethodCallException('Method not implemented yet.');
-	}
-
-	/**
-	 * {@inheritDoc}
-	 */
-	public function recordLogout(UserInterface $user)
-	{
-		throw new \BadMethodCallException('Method not implemented yet.');
-	}
-
-	/**
-	 * {@inheritDoc}
-	 */
-	public function validForCreation(array $credentials)
-	{
-		throw new \BadMethodCallException('Method not implemented yet.');
-	}
-
-	/**
-	 * {@inheritDoc}
-	 */
-	public function validForUpdate($user, array $credentials)
-	{
-		throw new \BadMethodCallException('Method not implemented yet.');
-	}
-
-	/**
-	 * {@inheritDoc}
-	 */
-	public function create(array $credentials, Closure $callback = null)
-	{
-		throw new \BadMethodCallException('Method not implemented yet.');
-	}
-
-	/**
-	 * {@inheritDoc}
-	 */
-	public function update($user, array $credentials)
-	{
-		throw new \BadMethodCallException('Method not implemented yet.');
-	}
-
-	/**
-	 * Parses the given credentials to return logins, password and others.
-	 *
-	 * @param  array  $credentials
-	 * @param  array  $loginNames
-	 * @return array
-	 * @throws \InvalidArgumentException
-	 */
-	protected function parseCredentials(array $credentials, array $loginNames)
-	{
-		if (isset($credentials['password']))
-		{
-			$password = $credentials['password'];
-			unset($credentials['password']);
-		}
-		else
-		{
-			$password = null;
-		}
-
-		$passedNames = array_intersect_key($credentials, array_flip($loginNames));
-
-		if (count($passedNames) > 0)
-		{
-			$logins = array();
-
-			foreach ($passedNames as $name => $value)
-			{
-				$logins[$name] = $credentials[$name];
-				unset($credentials[$name]);
-			}
-		}
-		elseif (isset($credentials['login']))
-		{
-			$logins = $credentials['login'];
-			unset($credentials['login']);
-		}
-		else
-		{
-			$logins = array();
-		}
-
-		return array($logins, $password, $credentials);
+		$user->last_login = date('Y-m-d H:i:s');
+		return $user->save();
 	}
 
 	/**
@@ -194,66 +123,33 @@ class KohanaUserRepository implements UserRepositoryInterface {
 	 */
 	protected function fill(UserInterface $user, array $credentials)
 	{
-		throw new \BadMethodCallException('Method not implemented yet.');
-	}
+		$loginNames = $user->getLoginNames();
 
-	/**
-	 * Validates the user.
-	 *
-	 * @param  array  $credentials
-	 * @param  int  $id
-	 * @return bool
-	 * @throws \InvalidArgumentException
-	 */
-	protected function validateUser(array $credentials, $id = null)
-	{
-		$instance = $this->createModel();
-		$loginNames = $instance->getLoginNames();
-
-		// We will simply parse credentials which checks logins and passwords
 		list($logins, $password, $credentials) = $this->parseCredentials($credentials, $loginNames);
 
-		if ($id === null)
+		if (is_array($logins))
 		{
-			if (empty($logins))
+			foreach ($logins as $key => $value)
 			{
-				throw new \InvalidArgumentException('No [login] credential was passed.');
-			}
-			if ($password === null)
-			{
-				throw new \InvalidArgumentException('You have not passed a [password].');
+				$user->$key = $value;
 			}
 		}
-
-		if ($password and strlen($password) < 6)
+		else
 		{
-			throw new \InvalidArgumentException('Your [password] must be at least 6 characters.');
+			$loginName = reset($loginNames);
+			$user->$loginName = $logins;
 		}
 
-		return true;
-	}
+		foreach ($credentials as $key => $value)
+		{
+			$user->$key = $value;
+		}
 
-	/**
-	 * Create a new instance of the model.
-	 *
-	 * @return \Illuminate\Database\Eloquent\Model
-	 */
-	public function createModel()
-	{
-		$class = '\\'.ltrim($this->model, '\\');
-
-		return new $class;
-	}
-
-	/**
-	 * Runtime override of the model.
-	 *
-	 * @param  string  $model
-	 * @return void
-	 */
-	public function setModel($model)
-	{
-		$this->model = $model;
+		if (isset($password))
+		{
+			$password = $this->hasher->hash($password);
+			$user->password = $password;
+		}
 	}
 
 }

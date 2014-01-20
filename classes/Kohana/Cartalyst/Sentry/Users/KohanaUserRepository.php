@@ -18,8 +18,6 @@
  * @link       http://cartalyst.com
  */
 
-use Carbon\Carbon;
-use Cartalyst\Sentry\Hashing\HasherInterface;
 use Cartalyst\Sentry\Users\BaseUserRepository;
 use Cartalyst\Sentry\Users\UserRepositoryInterface;
 use Cartalyst\Sentry\Users\UserInterface;
@@ -94,7 +92,7 @@ class KohanaUserRepository extends BaseUserRepository implements UserRepositoryI
 		{
 			$persistenceCodes = $user->persistence_codes;
 
-			return is_array($persistenceCodes) and in_array($code, $persistenceCodes);
+			return is_array($persistenceCodes) && in_array($code, $persistenceCodes);
 		});
 
 		if (count($users) > 1)
